@@ -1,6 +1,6 @@
-"""Project core package.
+"""zimmed-core package
 
-Contains globally-used classes and utilities.
+Miscellaneous python utilities.
 
 .. packageauthor:: Dave Zimmelman <zimmed@zimmed.io>
 
@@ -15,8 +15,11 @@ Exports:
 
 
 # ----------------------------------------------------------------------------
-__version__ = 0.1
-__license__ = "TBD"
-__copyright__ = "Copyright (c) 2015 David Zimmelman - All Rights Reserved."
+__version__ = 1.0
+__license__ = "MIT"
 __credits__ = ["zimmed"]
+__copyright__ = '''
+Copyright (c) 2015 David Zimmelman - Re-use code freely with credit to
+original author(s).
+'''
 # ----------------------------------------------------------------------------
