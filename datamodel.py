@@ -347,8 +347,9 @@ class DataModelController(object):
             name(s).
 
     Public Methods:
-        on_change
-        off_change
+        on_change -- Add event listener for a changed data key.
+        off_change -- Remove event listeners for given key.
+        get_prop_for_key -- Get the property(ies) bound to a given data key.
 
     Properties:
         :type self.model: DataModel -- The `DataModel` owned by the controller.
@@ -443,7 +444,12 @@ class DataModelController(object):
         self.__model = DataModel(rules)
         self.__model.update_all(self)
 
-    def get_prop_for_key(self, key):
+    def get_pop_for_key(self, key):
+        """Return the attribute(s) bound to the data keys.
+
+        :param key: str -- The `DataModel` key to lookup.
+        :return: mixed -- The property associated with the data key.
+        """
         if key not in self.__keys:
             raise ValueError("Key does not exist in DataModel.")
         attr_name = self.model.get_bindings_for_key(key)
