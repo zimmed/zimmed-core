@@ -38,11 +38,17 @@ class DotDict(dict):
 
 class ImmutableDotDict(DotDict):
     """Read-only dot-notation dictionary."""
+    def __init__(self, *args):
+        self.__locked = True
+        super(ImmutableDotDict, self).__init__(*args)
+
     def __setattr__(self, key, value):
-        if key not in self and hasattr(self, key):
+        try:
+            if self.__locked:
+                raise ValueError("Cannot assign to immutable object once "
+                                 "initialized.")
+        except AttributeError:
             self.__dict__[key] = value
-        else:
-            raise ValueError("Cannot assign to immutable object.")
 
     def __setitem__(self, key, value):
         raise ValueError("Cannot assign to immutable object.")
