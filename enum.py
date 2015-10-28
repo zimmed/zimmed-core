@@ -71,3 +71,6 @@ class EnumInt(Enum):
 
     def __repr__(self):
         return str(self._ordered_args)
+
+    def __iter__(self):
+        return (x for x in xrange(1, len(self._ordered_args) + 1))
