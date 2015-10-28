@@ -270,6 +270,9 @@ class DataModel(object):
         for key, val in self.__rules.iteritems():
             self.update_key(ref, key)
 
+    def get_bindings_for_key(self, key):
+        return self.__rules[key].binding
+
     def update_from_binding(self, ref, bound_attr_name=None):
         """Update model keys associated with given controller attribute.
 
@@ -436,25 +439,65 @@ class DataModelController(object):
         for k, v in rules.iteritems():
             if v[0]:
                 self.__bindings.append(v[0])
+        self.__keys = [k for k in rules.iteritems()]
         self.__model = DataModel(rules)
         self.__model.update_all(self)
+
+    def get_prop_for_key(self, key):
+        if key not in self.__keys:
+            raise ValueError("Key does not exist in DataModel.")
+        attr_name = self.model.get_bindings_for_key(key)
+        # If more than one binding for key, this only gets the first property
+        #   binding in the list. This could cause potential logic problems
+        #   in the future and should be dealt with eventually.
+        if isinstance(attr_name, (list, set, tuple)):
+            attr_name = attr_name[0]
+        return getattr(self, attr_name)
 
     def on_change(self, key, func, args=None):
         """Add listener for changed DataModel value(s).
 
-        :param key: str | list -- If '*' all keys will be bound.
+        :param key: str | list -- If '*' all keys will be bound. Allows
+            scoped listeners to be added using dot notation.
+            Example:
+                ctrl.on_change('sub_ctrl.sub_sub_ctrl.key
         :param func: callable (model, key, instruction, [args,...]) -- The
             event handler.
         :param args: list | None -- Optional additional args to pass to the
             handler function.
         """
         if key == '*':
-            key = self.__bindings
+            key = self.__keys
         if isinstance(key, (set, list, tuple)):
             for k in key:
                 self.on_change(k, func, args)
+        elif isinstance(key, str) and '.' in key:
+            keys = key.split('.')
+            final_key = keys.pop()
+            scope = self
+            for k in keys:
+                scopes = None
+                if isinstance(scope, (list, set, tuple)):
+                    scopes = scope
+                    scope = scopes[0]
+                if not scope.has_data_key(k):
+                    raise ValueError("Bad param supplied. No `" + k +
+                                     "` property.")
+                if scopes:
+                    scope = [obj.get_prop_for_key(k) for obj in scopes]
+                else:
+                    scope = scope.get_prop_for_key(k)
+            if isinstance(scope, list):
+                for s in scope:
+                    s.on_change(final_key, func, args)
+            else:
+                scope.on_change(final_key, func, args)
+        elif key in self.__keys:
+            if key not in self.__listeners:
+                self.__listeners[key] = []
+            self.__listeners[key].append((func, args))
         else:
-            self.__listeners[key] = (func, args)
+            raise ValueError("Key `' + key + '` does not exist in DataModel.")
 
     def off_change(self, key):
         """Remove listeners for given DataModel key(s).
@@ -480,7 +523,7 @@ class DataModelController(object):
         """
         if isinstance(key, (list, tuple, set)):
             for k in key:
-                self.__model.update_key(self, key, instruction)
+                self.__model.update_key(self, k, instruction)
         else:
             self.__model.update_key(self, key, instruction)
         self._call_listener(key, instruction)
@@ -495,19 +538,24 @@ class DataModelController(object):
         keys = self.__model.update_from_binding(self, bindings)
         self._call_listener(keys)
 
-    def _call_listener(self, keys, instruction=None):
+    def _call_listener(self, keys, instruction=None, kwargs=None):
         """ Call listener
 
         :param keys: str | set | list -- The key(s) that have been updated.
         :param instruction: dict - The optional instruction if the update was
             a precise collection update.
         """
+        if not instruction:
+            instruction = kwargs
+        elif kwargs is not None:
+            instruction.update(kwargs)
         if isinstance(keys, (list, set, tuple)):
             for key in keys:
-                self._call_listener(key, instruction)
-        elif keys in self.__listeners and callable(self.__listeners[keys][0]):
-            self.__listeners[keys][0](self.model, keys, instruction,
-                                      *self.__listeners[keys][1])
+                self._call_listener(key, instruction, kwargs)
+        elif keys in self.__listeners:
+            for listener in self.__listeners[keys]:
+                if callable(listener[0]):
+                    listener[0](self.model, keys, instruction, *listener[1])
 
     def __setattr__(self, key, value):
         super(DataModelController, self).__setattr__(key, value)
