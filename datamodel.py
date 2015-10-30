@@ -85,6 +85,9 @@ class DataModel(object):
         update_key - Update model for given key.
         update_all - Update model for all keys.
         update_from_binding - Update all model keys associated with binding.
+        iteritems -- Key, Value iterator for data.
+        iterkeys -- Key iterator for data.
+        itervalues -- Value iterator for data.
     """
 
     class Rule(object):
@@ -134,6 +137,10 @@ class DataModel(object):
         @property
         def operation(self): return self._operation
 
+    @property
+    def rules(self):
+        return dict(self.__rules)
+
     def __init__(self, rules):
         """DataModel init
 
@@ -180,7 +187,7 @@ class DataModel(object):
             value = ref
             operation = rule.operation
             if rule.binding:
-                value = ref.__dict__[rule.binding]
+                value = getattr(ref, rule.binding)
             if rule.type:
                 if isinstance(rule.type, Collection) or \
                         issubclass(rule.type, Collection):
@@ -323,6 +330,20 @@ class DataModel(object):
     def __repr__(self):
         return str(self)
 
+    # Iterators
+
+    def iteritems(self):
+        return (k, v for k, v in self.__data.iteritems())
+
+    def iterkeys(self):
+        return (k for k in self.__data.iterkeys())
+
+    def itervalues(self):
+        return (v for _, v in self.__data.iteritems())
+
+    def __iter__(self):
+        return self.iteritems()
+
 
 @abstract_class
 class DataModelController(object):
@@ -331,10 +352,28 @@ class DataModelController(object):
     Abstract class to be inherited by all Controllers. Contains private and
     public methods for handling data modeling and binding.
 
-    Init Params:
-        rules - A dictionary of `DataModel` keys mapped to tuples containing
-            the attribute name to be bound to, the value type, and an optional
-            mapping function, respectively.
+    Note:
+        Class __init__ should not be called directly. Use class methods `load`
+        and `new`.
+
+    Class Properties:
+        :type MODEL_RULES: dict -- Keys for the underlying `DataModel` mapped
+            to tuples containing the attribute name to be bound to, the value
+            type, and an optional mapping function, respectively.
+        :type INIT_DEFAULTS: dict -- Default values for __init__ params.
+
+    Class Methods:
+        load -- Load a controller instance by uid.
+        new -- Create new controller instance.
+        restore -- Restore controller instance by data model.
+
+    Properties:
+        :type model: DataModel -- The `DataModel` owned by the controller.
+
+    Public Methods:
+        on_change -- Add event listener for a changed data key.
+        off_change -- Remove event listeners for given key.
+        get_prop_for_key -- Get the property(ies) bound to a given data key.
 
     Private Methods -- To be used inside children classes:
         _update_model -- Update all `DataModel` keys bound to the give attribute
@@ -346,14 +385,6 @@ class DataModelController(object):
         _call_listener -- Fire event listeners for the given bound attribute
             name(s).
 
-    Public Methods:
-        on_change -- Add event listener for a changed data key.
-        off_change -- Remove event listeners for given key.
-        get_prop_for_key -- Get the property(ies) bound to a given data key.
-
-    Properties:
-        :type self.model: DataModel -- The `DataModel` owned by the controller.
-
     Usage:
         class MyController(DataModelController):
             def __init__(self):
@@ -362,7 +393,9 @@ class DataModelController(object):
         ctrl = MyController()
         ctrl.on_change(<binding name>, <func DataModel str dict|None (*args)>, *args)
 
-    Example:
+    Todo: New Example
+
+    Example [DEPRECIATED]:
         class PhoneRecord(DataModelController):
             # Phone record with object attributes of `name`, `number`, `id`;
             #   and a datamodel representation with keys of `firstname`,
@@ -423,26 +456,109 @@ class DataModelController(object):
         gene.model.lastname = 'Belcher' #-> ValueError (Cannot change values from read-only proxy.)
     """
 
-    @property
-    def model(self):
-        return self.__model
+    @classproperty
+    def MODEL_RULES(cls):
+        """Rules for the underlying data model.
 
-    def __init__(self, rules):
+        New Model Keys:
+            :key uid: str -- The unique id of the object.
+        """
+        return {
+            'uid': ('uid', str, None)
+        }
+
+    @classproperty
+    def INIT_DEFAULTS(cls):
+        """Default values for initialization parameters.
+
+        New Default Keys:
+            :key uid: str -- The unique id of the object.
+        """
+        return {
+            'uid': ''
+        }
+
+    @classmethod
+    def load(cls, uid, data_store):
+        """Load controller instance by uid.
+
+        :param uid: str -- The Unique ID of the model/controller.
+        :param data_store: mixed -- Storage module to handle saves and loads
+            of the DataModel.
+        :return: DataModelController -- Existing controller instance if stored,
+            otherwise new controller instance for existing data model.
+        """
+        if data_store.has_controller(cls):
+            return data_store.get_controller(cls, uid)
+        data_model = data_store.get(cls, uid)
+        return cls.restore(data_model, data_store)
+
+    @classmethod
+    def restore(cls, data_model, data_store, **kwargs):
+        """Create new controller instance for existing data model.
+
+        :param data_model: DataModel -- The existing data model.
+        :param data_store: mixed -- Optional storage module to handle saves
+            and loads of the DataModel.
+        :param kwargs: mapping -- Attribute names and values to bind to
+            instance.
+        :return: DataModelController -- New controller instance.
+        """
+        if not kwargs:
+            kwargs = {}
+        kwargs['uid'] = data_model.uid
+        return cls(data_model, data_store, **kwargs)
+
+    @classmethod
+    def new(cls, data_store=None, **kwargs):
+        """Create new controller instance.
+
+        :param data_store: mixed -- Optional storage module to handle saves
+            and loads of the DataModel.
+        :param kwargs: mapping -- Attribute names and values to bind to
+            instance.
+        :return: DataModelController -- New controller instance.
+        """
+        if not kwargs:
+            kwargs = {}
+        data_model = DataModel(cls.MODEL_RULES)
+        if data_store:
+            kwargs['uid'] = data_store.insert(cls, data_model)
+        return cls(data_model, data_store, **kwargs)
+
+    def __init__(self, data_model, data_store, **kwargs):
         """DataModelController init
 
-        :param rules: dict -- The DataModel keys and associated rules.
-
-        :raises NameError if rules contain data-key sharing the name of an
-            existing `DataModel` member.
+        :param data_model: DataModel -- The underlying data model.
+        :param data_store: mixed -- Optional storage module to handle saves
+            and loads of the DataModel.
+        :param kwargs: mapping -- Attribute names and values to bind to
+            instance.
         """
+        rules = data_model.rules
+        defaults = self.__class__.INIT_DEFAULTS
         self.__listeners = {}
         self.__bindings = []
         for k, v in rules.iteritems():
             if v[0]:
                 self.__bindings.append(v[0])
         self.__keys = [k for k in rules.iteritems()]
-        self.__model = DataModel(rules)
+        self.__model = data_model
+        self.__data_store = data_store
+        for k in kwargs.iterkeys():
+            setattr(self, k, kwargs.get(k, defaults[k]))
+        data_store.set_controller(self.__class__, self.uid, self)
         self.__model.update_all(self)
+
+    def __del__(self):
+        try:
+            self.__data_store.delete(self.__class__.__name__, self.uid)
+        except AttributeError:
+            pass
+
+    @property
+    def model(self):
+        return self.__model
 
     def get_pop_for_key(self, key):
         """Return the attribute(s) bound to the data keys.
