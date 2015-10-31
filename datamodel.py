@@ -318,11 +318,17 @@ class DataModel(object):
         else:
             raise AttributeError
 
+    def __getitem__(self, key):
+        return self.__data[key]
+
     def __setattr__(self, key, value):
         if hasattr(self, '_locked') and self.__locked:
             raise ValueError('Cannot change values from read-only proxy.')
         else:
             super(DataModel, self).__setattr__(key, value)
+
+    def __setitem__(self, key, value):
+        raise ValueError('Cannot change values from read-only proxy.')
 
     def __str__(self):
         return str(self.__data)
@@ -479,6 +485,16 @@ class DataModelController(object):
         }
 
     @classmethod
+    def get(cls, uid, data_store):
+        """Alias for `load`."""
+        return cls.load(uid, data_store)
+
+    @classmethod
+    def delete(cls, uid, data_store):
+        """Delete controller and model instances."""
+        data_store.delete(cls, uid)
+
+    @classmethod
     def load(cls, uid, data_store):
         """Load controller instance by uid.
 
@@ -488,8 +504,9 @@ class DataModelController(object):
         :return: DataModelController -- Existing controller instance if stored,
             otherwise new controller instance for existing data model.
         """
-        if data_store.has_controller(cls):
-            return data_store.get_controller(cls, uid)
+        ctrl = data_store.get_controller(cls, uid)
+        if ctrl:
+            return ctrl
         data_model = data_store.get(cls, uid)
         return cls.restore(data_model, data_store)
 
@@ -544,17 +561,12 @@ class DataModelController(object):
                 self.__bindings.append(v[0])
         self.__keys = [k for k in rules.iteritems()]
         self.__model = data_model
-        self.__data_store = data_store
-        for k in kwargs.iterkeys():
-            setattr(self, k, kwargs.get(k, defaults[k]))
+        self._data_store = data_store
+        defaults.update(kwargs)
+        for k, v in defaults.iteritems():
+            setattr(self, k, v)
         data_store.set_controller(self.__class__, self.uid, self)
         self.__model.update_all(self)
-
-    def __del__(self):
-        try:
-            self.__data_store.delete(self.__class__.__name__, self.uid)
-        except AttributeError:
-            pass
 
     @property
     def model(self):
