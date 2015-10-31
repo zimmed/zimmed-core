@@ -521,8 +521,6 @@ class DataModelController(object):
             instance.
         :return: DataModelController -- New controller instance.
         """
-        if not kwargs:
-            kwargs = {}
         kwargs['uid'] = data_model.uid
         return cls(data_model, data_store, **kwargs)
 
