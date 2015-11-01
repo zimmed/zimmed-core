@@ -57,11 +57,11 @@ def abstract_class(cls):
     """
     orig_init = cls.__init__
 
-    def init(self, *args):
+    def init(self, *args, **kwargs):
         if self.__class__ == cls:
             raise InitError('Cannot instantiate abstract class.')
         else:
-            orig_init(self, *args)
+            orig_init(self, *args, **kwargs)
 
     cls.__init__ = init
     return cls

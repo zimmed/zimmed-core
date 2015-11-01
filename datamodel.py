@@ -339,7 +339,7 @@ class DataModel(object):
     # Iterators
 
     def iteritems(self):
-        return (k, v for k, v in self.__data.iteritems())
+        return ((k, v) for k, v in self.__data.iteritems())
 
     def iterkeys(self):
         return (k for k in self.__data.iterkeys())
