@@ -25,6 +25,10 @@ class Enum(ImmutableDotDict):
         repr(Values) #-> "['Horse', 'One', 'Two']"
     """
 
+    def name_of(self, value):
+        """Only here for Enum consistency."""
+        return self[value]
+
     def __init__(self, *args):
         """Enum init.
 
@@ -48,8 +52,11 @@ class Enum(ImmutableDotDict):
 class EnumInt(Enum):
     """ C-style enum with int values, rather than str.
 
+    Public Methods:
+        name_of -- Get the string name of the key that holds the given value.
+
     Init Parameters:
-        *args: One or more strings. These will be the property
+        args -- One or more strings. These will be the property
             names. Values assigned are in order of supplied
             arguments in ascending order.
 
@@ -59,6 +66,14 @@ class EnumInt(Enum):
         repr(Values['Horse']) #-> "3"
         repr(Values) #-> "['One', 'Two', 'Horse']"
     """
+
+    def name_of(self, value):
+        """Get key name for Enum value.
+
+        :param value: int
+        :return: str -- Key name.
+        """
+        return self._ordered_args[value - 1]
 
     def __init__(self, *args):
         """Enum init.
