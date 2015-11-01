@@ -52,19 +52,12 @@ class Collection(object):
     def Dict(cls):
         return CollectionDict
 
-    # noinspection PyMethodParameters
-    @classproperty
-    def subtype(cls):
-        return None
+    subtype = None
 
     def __init__(self, subtype=None):
-        if subtype is None:
-            subtype = self.__class__.subtype
-        self._subtype = subtype
-
-    @property
-    def subtype(self):
-        return self._subtype
+        if not subtype:
+            subtype = Collection.subtype
+        self.subtype = subtype
 
 
 class DataModel(object):
@@ -89,6 +82,14 @@ class DataModel(object):
         iterkeys -- Key iterator for data.
         itervalues -- Value iterator for data.
     """
+
+    none_instance = None
+
+    @classproperty
+    def Null(cls):
+        if not cls.none_instance:
+            cls.none_instance = DataModel({})
+        return cls.none_instance
 
     class Rule(object):
         """Holds data for individual binding rule.
@@ -189,11 +190,13 @@ class DataModel(object):
             if rule.binding:
                 value = getattr(ref, rule.binding)
             if rule.type:
-                if isinstance(rule.type, Collection) or \
-                        issubclass(rule.type, Collection):
+                if (isinstance(rule.type, Collection) or
+                        (type(rule.type) is type and
+                         issubclass(rule.type, Collection))):
                     subtype = rule.type.subtype
-                    if isinstance(rule.type, Collection.List) or \
-                            issubclass(rule.type, Collection.List):
+                    if (isinstance(rule.type, Collection.List) or
+                            (type(rule.type) is type and
+                             issubclass(rule.type, Collection.List))):
                         if instruction:
                             if instruction['action'] == 'remove':
                                 item = self.__data[key][instruction['index']]
@@ -227,8 +230,9 @@ class DataModel(object):
                                                     'in collection: ' + key)
                             self.__data[key] = [operation(x) for x in value]
 
-                    elif isinstance(rule.type, Collection.Dict) or \
-                            issubclass(rule.type, Collection.Dict):
+                    elif (isinstance(rule.type, Collection.Dict) or
+                          (type(rule.type) is type and
+                           issubclass(rule.type, Collection.Dict))):
                         if instruction:
                             if instruction['action'] == 'remove':
                                 del self.__data[key][instruction['key']]
@@ -255,10 +259,11 @@ class DataModel(object):
                                                     'in collection: ' + key)
                                 self.__data[k] = y
                 else:
+                    value = operation(value)
                     if not isinstance(value, rule.type):
                         raise TypeError('Datamodel expected value with type '
                                         '`' + rule.type.__name__ + '` for key: ' + key)
-                    self.__data[key] = operation(value)
+                    self.__data[key] = value
             else:
                 self.__data[key] = operation(value)
         else:
@@ -521,6 +526,9 @@ class DataModelController(object):
             instance.
         :return: DataModelController -- New controller instance.
         """
+        ctrl = data_store.get_controller(cls, data_model.uid)
+        if ctrl:
+            return ctrl
         kwargs['uid'] = data_model.uid
         return cls(data_model, data_store, **kwargs)
 
@@ -534,8 +542,6 @@ class DataModelController(object):
             instance.
         :return: DataModelController -- New controller instance.
         """
-        if not kwargs:
-            kwargs = {}
         data_model = DataModel(cls.MODEL_RULES)
         if data_store:
             kwargs['uid'] = data_store.insert(cls, data_model)
@@ -555,9 +561,9 @@ class DataModelController(object):
         self.__listeners = {}
         self.__bindings = []
         for k, v in rules.iteritems():
-            if v[0]:
-                self.__bindings.append(v[0])
-        self.__keys = [k for k in rules.iteritems()]
+            if v.binding:
+                self.__bindings.append(v.binding)
+        self.__keys = [k for k in rules.iterkeys()]
         self.__model = data_model
         self._data_store = data_store
         defaults.update(kwargs)
@@ -570,7 +576,7 @@ class DataModelController(object):
     def model(self):
         return self.__model
 
-    def get_pop_for_key(self, key):
+    def get_prop_for_key(self, key):
         """Return the attribute(s) bound to the data keys.
 
         :param key: str -- The `DataModel` key to lookup.
@@ -585,6 +591,9 @@ class DataModelController(object):
         if isinstance(attr_name, (list, set, tuple)):
             attr_name = attr_name[0]
         return getattr(self, attr_name)
+
+    def has_data_key(self, key):
+        return bool(key in self.__keys)
 
     def on_change(self, key, func, args=None):
         """Add listener for changed DataModel value(s).
@@ -629,7 +638,7 @@ class DataModelController(object):
                 self.__listeners[key] = []
             self.__listeners[key].append((func, args))
         else:
-            raise ValueError("Key `' + key + '` does not exist in DataModel.")
+            raise ValueError("Key `" + key + "` does not exist in DataModel.")
 
     def off_change(self, key):
         """Remove listeners for given DataModel key(s).
@@ -687,14 +696,17 @@ class DataModelController(object):
         elif keys in self.__listeners:
             for listener in self.__listeners[keys]:
                 if callable(listener[0]):
-                    listener[0](self.model, keys, instruction, *listener[1])
+                    if listener[1]:
+                        listener[0](self.model, keys, instruction, *listener[1])
+                    else:
+                        listener[0](self.model, keys, instruction)
 
     def __setattr__(self, key, value):
         super(DataModelController, self).__setattr__(key, value)
         try:
             if self.__bindings and key in self.__bindings:
                 self._update_model(key)
-        except NameError:
+        except (AttributeError, NameError):
             pass
 
 
