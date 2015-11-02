@@ -513,6 +513,8 @@ class DataModelController(object):
         if ctrl:
             return ctrl
         data_model = data_store.get(cls, uid)
+        if not data_model:
+            raise ValueError("Could not find model for uid: " + uid)
         return cls.restore(data_model, data_store)
 
     @classmethod
