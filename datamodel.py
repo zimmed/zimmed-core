@@ -18,6 +18,7 @@ Exports:
 """
 
 from core.decorators import classproperty, abstract_class
+import pickle
 
 
 @abstract_class
@@ -91,6 +92,11 @@ class DataModel(object):
             cls.none_instance = DataModel({})
         return cls.none_instance
 
+    @classmethod
+    def load(cls, json_rules, model_data):
+        rules = dict([(k, pickle.loads(v)) for k, v in json_rules.iteritems()])
+        return cls(None, rules, model_data)
+
     class Rule(object):
         """Holds data for individual binding rule.
 
@@ -138,11 +144,18 @@ class DataModel(object):
         @property
         def operation(self): return self._operation
 
+        def pickle(self):
+            return pickle.dumps(self)
+
     @property
     def rules(self):
         return dict(self.__rules)
 
-    def __init__(self, rules):
+    @property
+    def json_rules(self):
+        return dict([(k, v.pickle()) for k, v in self.__rules.iteritems()])
+
+    def __init__(self, ruleset, rules=None, data=None):
         """DataModel init
 
         :param rules: dict -- The rule-set for each DataModel key.
@@ -151,12 +164,13 @@ class DataModel(object):
             existing member.
         """
         self.__locked = False
-        self.__data = {}
-        self.__rules = {}
-        for key, val in rules.iteritems():
-            if hasattr(self, key):
-                raise NameError('Invalid DataModel key name: ' + key)
-            self.__rules[key] = DataModel.Rule(*val)
+        self.__data = data or {}
+        self.__rules = rules or {}
+        if not self.__rules:
+            for key, val in ruleset.iteritems():
+                if hasattr(self, key):
+                    raise NameError('Invalid DataModel key name: ' + key)
+                self.__rules[key] = DataModel.Rule(*val)
         self.__locked = True
 
     def update_key(self, ref, key, instruction=None):
