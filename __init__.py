@@ -8,7 +8,7 @@ Exports:
     :module datamodel -- Data model/controller structures.
     :module decorators -- Core decorators module.
     :module dotdict -- Dot-notation dictionary data-structures.
-    :module enum-- Enum data structure.
+    :module enum -- Enum data structure.
     :module exceptions -- Custom Exception classes.
 
 """
