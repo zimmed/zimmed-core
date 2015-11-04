@@ -19,6 +19,7 @@ Exports:
 
 from core.decorators import classproperty, abstract_class
 import pickle
+from combomethod import combomethod
 
 
 @abstract_class
@@ -503,18 +504,48 @@ class DataModelController(object):
             'uid': ''
         }
 
+    # noinspection PyMethodParameters
+    @combomethod
+    def save(rec, data_store, uid=None):
+        """Save DataModel to permanent storage."""
+        if isinstance(rec, DataModelController):
+            data_store.save(rec.__class__, rec.model)
+        else:
+            if not uid:
+                raise ValueError("`uid` param required for classmethod.")
+            ctrl = rec.get(uid, data_store)
+            ctrl.save(data_store)
+
+    # noinspection PyMethodParameters
+    @combomethod
+    def delete_cache(rec, data_store, uid=None):
+        """Delete controller from cache."""
+        if isinstance(rec, DataModelController):
+            data_store.delete_controller(rec.__class__, rec.uid)
+        else:
+            if not uid:
+                raise ValueError("`uid` param required for classmethod.")
+            rec.get(uid).delete_cache(data_store)
+
+    # noinspection PyMethodParameters
+    @combomethod
+    def delete(rec, data_store, uid=None):
+        """Delete controller and datamodel from all storage."""
+        if isinstance(rec, DataModelController):
+            rec.delete_cache(data_store)
+            data_store.delete_model(rec.__class__, rec.uid)
+        else:
+            if not uid:
+                raise ValueError("`uid` param required for classmethod.")
+            rec.get(data_store, uid).delete(data_store)
+
     @classmethod
-    def get(cls, uid, data_store):
+    def get(cls, data_store, uid):
         """Alias for `load`."""
-        return cls.load(uid, data_store)
+        return cls.load(data_store, uid)
 
     @classmethod
-    def delete(cls, uid, data_store):
-        """Delete controller and model instances."""
-        data_store.delete(cls, uid)
-
-    @classmethod
-    def load(cls, uid, data_store):
+    def load(cls, data_store, uid):
         """Load controller instance by uid.
 
         :param uid: str -- The Unique ID of the model/controller.
@@ -523,16 +554,10 @@ class DataModelController(object):
         :return: DataModelController -- Existing controller instance if stored,
             otherwise new controller instance for existing data model.
         """
-        ctrl = data_store.get_controller(cls, uid)
-        if ctrl:
-            return ctrl
-        data_model = data_store.get(cls, uid)
-        if not data_model:
-            raise ValueError("Could not find model for uid: " + uid)
-        return cls.restore(data_model, data_store)
+        return data_store.get_controller(cls, uid)
 
     @classmethod
-    def restore(cls, data_model, data_store, **kwargs):
+    def restore(cls, data_store, data_model, **kwargs):
         """Create new controller instance for existing data model.
 
         :param data_model: DataModel -- The existing data model.
@@ -542,10 +567,8 @@ class DataModelController(object):
             instance.
         :return: DataModelController -- New controller instance.
         """
-        ctrl = data_store.get_controller(cls, data_model.uid)
-        if ctrl:
-            return ctrl
         kwargs['uid'] = data_model.uid
+        kwargs['update'] = False
         return cls(data_model, data_store, **kwargs)
 
     @classmethod
@@ -560,10 +583,10 @@ class DataModelController(object):
         """
         data_model = DataModel(cls.MODEL_RULES)
         if data_store:
-            kwargs['uid'] = data_store.insert(cls, data_model)
+            kwargs['uid'] = data_store.uid(cls)
         return cls(data_model, data_store, **kwargs)
 
-    def __init__(self, data_model, data_store, **kwargs):
+    def __init__(self, data_model, data_store, update=True, **kwargs):
         """DataModelController init
 
         :param data_model: DataModel -- The underlying data model.
@@ -585,8 +608,9 @@ class DataModelController(object):
         defaults.update(kwargs)
         for k, v in defaults.iteritems():
             setattr(self, k, v)
-        data_store.set_controller(self.__class__, self.uid, self)
-        self.__model.update_all(self)
+        data_store.set_controller(self.__class__, self)
+        if update:
+            self.__model.update_all(self)
 
     @property
     def model(self):
@@ -713,7 +737,8 @@ class DataModelController(object):
             for listener in self.__listeners[keys]:
                 if callable(listener[0]):
                     if listener[1]:
-                        listener[0](self.model, keys, instruction, *listener[1])
+                        listener[0](self.model, keys, instruction,
+                                    *listener[1])
                     else:
                         listener[0](self.model, keys, instruction)
 
