@@ -123,10 +123,23 @@ class DataModel(object):
     Note:
         Should only be initialized from within `DataModelController` class.
 
+    Class Properties:
+        :type Null: DataModel -- Null DataModel instance.
+
+    Class Methods:
+        load -- Load DataModel instance from existing data and rules.
+
     Init Params:
-        rules - A dictionary of `DataModel` keys mapped to tuples containing
+        ruleset - A dictionary of `DataModel` keys mapped to tuples containing
             the attribute name(s) to bind, the value type, and an optional
-            mapping function, respectively.
+            mapping function, respectively. If none, existing rules and data
+            should be provided.
+        rules - (Optional) existing rules to load.
+        data - (Optional) existing data to load.
+
+    Properties:
+        :type rules: dict -- Collection of `Rule`s.
+        :type bson_rules: dict -- A mongo-ready collection of rules.
 
     Public Methods:
         update_key - Update model for given key.
@@ -147,6 +160,12 @@ class DataModel(object):
 
     @classmethod
     def load(cls, bson_rules, model_data):
+        """Load DataModel from existing data.
+
+        :param bson_rules: dict -- BSON-format rules collection.
+        :param model_data: dict -- Initializing data.
+        :return: DataModel
+        """
         rules = dict([(k, pickle.loads(str(v))) for k, v in bson_rules.iteritems()])
         return cls(None, rules, model_data)
 
@@ -300,6 +319,11 @@ class DataModel(object):
             self.update_key(ref, key)
 
     def get_bindings_for_key(self, key):
+        """Return all property names bound to key.
+
+        :param key: str -- The DataModel data key.
+        :return: list -- Controller property names.
+        """
         return self.__rules[key].binding
 
     def update_from_binding(self, ref, bound_attr_name=None):
@@ -308,11 +332,6 @@ class DataModel(object):
         :param ref: DataModelController -- The controller instance.
         :param bound_attr_name: str | list | None -- If None, the entire model
             is updated.
-        :return set -- The set of keys that are associated with the attribute
-            name(s) given.
-
-        :raises TypeError if updated value does not conform to the defined
-            type rules.
         """
         keys = set()
         if not bound_attr_name:
@@ -636,6 +655,11 @@ class DataModelController(object):
         return getattr(self, attr_name)
 
     def has_data_key(self, key):
+        """Contains specified key in DataModel.
+
+        :param key: str -- The data key.
+        :return: bool
+        """
         return bool(key in self.__keys)
 
     def on_change(self, key, func, args=None):
