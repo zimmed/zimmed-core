@@ -17,8 +17,9 @@ Exports:
         inherit from this.
 """
 
+from bson.binary import Binary
 from core.decorators import classproperty, abstract_class
-import pickle
+import dill as pickle
 from combomethod import combomethod
 
 
@@ -62,6 +63,57 @@ class Collection(object):
         self.subtype = subtype
 
 
+class Rule(object):
+    """Holds data for individual binding rule.
+
+    Properties:
+        :type self.type: type | Collection | None -- Used for enforcement
+            of strict typing within `DataModel`.
+        :type self.binding: str | None -- The name of the attribute on the
+            controller to which the `DataModel` key is bound. If None, key
+            is bound to controller instance.
+        :type self.operation: callable (mixed) -> mixed -- Function rule for
+            converting data from controller attribute into form accepted by
+            `DataModel` key.
+    """
+    @classmethod
+    def default_operation(cls, scope):
+        """Mapping function to use for key value if none defined.
+
+        Current default is identity function.
+        """
+        return scope
+
+    def __init__(self, binding, datatype, operation):
+        """Rule init
+
+        :param binding: str | list | None -- Name of bound Controller
+            attribute(s). If None value will be bound to root controller
+            instance.
+        :param datatype: type | Collection | None -- Type rule for value.
+            If None value will have no type restriction.
+        :param operation: None | callable (mixed) -> mixed -- Optional
+            mapping function that takes the bound attribute and produces
+            the value to be stored in the `DataModel`.
+        """
+        self._binding, self._type = binding, datatype
+        if operation is None:
+            operation = self.__class__.default_operation
+        self._operation = operation
+
+    @property
+    def type(self): return self._type
+
+    @property
+    def binding(self): return self._binding
+
+    @property
+    def operation(self): return self._operation
+
+    def pickle(self):
+        return pickle.dumps(self)
+
+
 class DataModel(object):
     """Read-only representation of data.
 
@@ -94,67 +146,17 @@ class DataModel(object):
         return cls.none_instance
 
     @classmethod
-    def load(cls, json_rules, model_data):
-        rules = dict([(k, pickle.loads(v)) for k, v in json_rules.iteritems()])
+    def load(cls, bson_rules, model_data):
+        rules = dict([(k, pickle.loads(str(v))) for k, v in bson_rules.iteritems()])
         return cls(None, rules, model_data)
-
-    class Rule(object):
-        """Holds data for individual binding rule.
-
-        Properties:
-            :type self.type: type | Collection | None -- Used for enforcement
-                of strict typing within `DataModel`.
-            :type self.binding: str | None -- The name of the attribute on the
-                controller to which the `DataModel` key is bound. If None, key
-                is bound to controller instance.
-            :type self.operation: callable (mixed) -> mixed -- Function rule for
-                converting data from controller attribute into form accepted by
-                `DataModel` key.
-        """
-        @classmethod
-        def default_operation(cls, scope):
-            """Mapping function to use for key value if none defined.
-
-            Current default is identity function.
-            """
-            return scope
-
-        def __init__(self, binding, datatype, operation):
-            """DataModel.Rule init
-
-            :param binding: str | list | None -- Name of bound Controller
-                attribute(s). If None value will be bound to root controller
-                instance.
-            :param datatype: type | Collection | None -- Type rule for value.
-                If None value will have no type restriction.
-            :param operation: None | callable (mixed) -> mixed -- Optional
-                mapping function that takes the bound attribute and produces
-                the value to be stored in the `DataModel`.
-            """
-            self._binding, self._type = binding, datatype
-            if operation is None:
-                operation = self.__class__.default_operation
-            self._operation = operation
-
-        @property
-        def type(self): return self._type
-
-        @property
-        def binding(self): return self._binding
-
-        @property
-        def operation(self): return self._operation
-
-        def pickle(self):
-            return pickle.dumps(self)
 
     @property
     def rules(self):
         return dict(self.__rules)
 
     @property
-    def json_rules(self):
-        return dict([(k, v.pickle()) for k, v in self.__rules.iteritems()])
+    def bson_rules(self):
+        return dict([(k, Binary(v.pickle())) for k, v in self.__rules.iteritems()])
 
     def __init__(self, ruleset, rules=None, data=None):
         """DataModel init
@@ -171,7 +173,7 @@ class DataModel(object):
             for key, val in ruleset.iteritems():
                 if hasattr(self, key):
                     raise NameError('Invalid DataModel key name: ' + key)
-                self.__rules[key] = DataModel.Rule(*val)
+                self.__rules[key] = Rule(*val)
         self.__locked = True
 
     def update_key(self, ref, key, instruction=None):
@@ -490,7 +492,8 @@ class DataModelController(object):
             :key uid: str -- The unique id of the object.
         """
         return {
-            'uid': ('uid', str, None)
+            'uid': ('uid', str, None),
+            '_collection': (None, str, lambda x: x.__class__.__name__)
         }
 
     @classproperty
@@ -525,7 +528,7 @@ class DataModelController(object):
         else:
             if not uid:
                 raise ValueError("`uid` param required for classmethod.")
-            rec.get(uid).delete_cache(data_store)
+            rec.get(data_store, uid).delete_cache(data_store)
 
     # noinspection PyMethodParameters
     @combomethod
@@ -568,7 +571,6 @@ class DataModelController(object):
         :return: DataModelController -- New controller instance.
         """
         kwargs['uid'] = data_model.uid
-        kwargs['update'] = False
         return cls(data_model, data_store, **kwargs)
 
     @classmethod
@@ -586,7 +588,7 @@ class DataModelController(object):
             kwargs['uid'] = data_store.uid(cls)
         return cls(data_model, data_store, **kwargs)
 
-    def __init__(self, data_model, data_store, update=True, **kwargs):
+    def __init__(self, data_model, data_store=None, update=True, **kwargs):
         """DataModelController init
 
         :param data_model: DataModel -- The underlying data model.
@@ -608,7 +610,8 @@ class DataModelController(object):
         defaults.update(kwargs)
         for k, v in defaults.iteritems():
             setattr(self, k, v)
-        data_store.set_controller(self.__class__, self)
+        if data_store:
+            data_store.set_controller(self.__class__, self)
         if update:
             self.__model.update_all(self)
 
