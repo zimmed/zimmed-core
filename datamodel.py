@@ -249,7 +249,13 @@ class DataModel(object):
                                     raise TypeError('Item of invalid type '
                                                     'in collection: ' + key)
                                 self.__data[key].insert(instruction['index'],
-                                                       item)
+                                                        item)
+                            elif instruction['action'] == 'update':
+                                item = operation(value[instruction['index']])
+                                if subtype and not isinstance(item, subtype):
+                                    raise TypeError('Item of invalid type '
+                                                    'in collection: ' + key)
+                                self.__data[key][instruction['index']] = item
                             else:
                                 raise ValueError(
                                     'collection.list cannot handle instruction'
@@ -272,7 +278,7 @@ class DataModel(object):
                         if instruction:
                             if instruction['action'] == 'remove':
                                 del self.__data[key][instruction['key']]
-                            elif instruction['action'] == 'add':
+                            elif instruction['action'] in ('add', 'update'):
                                 item = operation(value[instruction['key']])
                                 if subtype and not isinstance(item, subtype):
                                     raise TypeError('Item of invalid type '
@@ -516,6 +522,26 @@ class DataModelController(object):
         }
 
     @classproperty
+    def MODEL_FILTER_SECRET(cls):
+        """Allowed DataModel keys for secret view. (least detailed data)"""
+        return ['uid']
+
+    @classproperty
+    def MODEL_FILTER_PUBLIC(cls):
+        """Allowed DataModel keys for public view. (little details)"""
+        return cls.MODEL_FILTER_SECRET
+
+    @classproperty
+    def MODEL_FILTER_PROTECTED(cls):
+        """Allowed DataModel keys for protected view. (more details)"""
+        return cls.MODEL_FILTER_PUBLIC
+
+    @classproperty
+    def MODEL_FILTER_PRIVATE(cls):
+        """Allowed DataModel keys for private view. (most details)"""
+        return cls.MODEL_FILTER_PROTECTED
+
+    @classproperty
     def INIT_DEFAULTS(cls):
         """Default values for initialization parameters.
 
@@ -525,6 +551,29 @@ class DataModelController(object):
         return {
             'uid': ''
         }
+
+    # noinspection PyMethodParameters
+    @combomethod
+    def filter(rec, obj, level=None):
+        if isinstance(rec, DataModelController):
+            return rec.__class__.filter(rec, obj)
+        level = level.upper()
+        if level not in ('SECRET', 'PUBLIC', 'PROTECTED', 'PRIVATE'):
+            raise ValueError("`level` arg must be one: 'SECRET', 'PUBLIC', "
+                             "'PROTECTED', 'PRIVATE'")
+        f = getattr(rec, 'MODEL_FILTER_' + level.upper())
+        model = obj
+        if isinstance(obj, DataModelController):
+            model = obj.model
+        return dict(((k, v) for k, v in model.iteritems() if k in f))
+
+    @classmethod
+    def find(cls, data_store, **kwargs):
+        return data_store.find_controller(**kwargs)
+
+    @classmethod
+    def find_model(cls, data_store, **kwargs):
+        return data_store.find_model(**kwargs)
 
     # noinspection PyMethodParameters
     @combomethod
