@@ -569,7 +569,7 @@ class DataModelController(object):
 
     @classmethod
     def find(cls, data_store, **kwargs):
-        return data_store.find_controller(**kwargs)
+        return data_store.find_controller(cls, **kwargs)
 
     @classmethod
     def find_model(cls, data_store, **kwargs):
