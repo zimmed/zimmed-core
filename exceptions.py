@@ -17,3 +17,8 @@ class InitError(StandardError):
 class StateError(RuntimeError):
     """Errors pertaining to an object's state at runtime."""
     pass
+
+
+class LogicError(RuntimeError):
+    """Errors pertaining to the desired logic-path of certain behavior."""
+    pass
