@@ -17,6 +17,7 @@ Exports:
         inherit from this.
 """
 
+import copy
 from bson.binary import Binary
 from core.decorators import classproperty, abstract_class
 import dill as pickle
@@ -396,6 +397,9 @@ class DataModel(object):
 
     def __iter__(self):
         return self.iteritems()
+
+    def copy(self):
+        return copy.deepcopy(self.__data)
 
 
 @abstract_class

@@ -38,9 +38,9 @@ class DotDict(dict):
 
 class ImmutableDotDict(DotDict):
     """Read-only dot-notation dictionary."""
-    def __init__(self, *args):
+    def __init__(self, *args, **kwargs):
         self.__locked = True
-        super(ImmutableDotDict, self).__init__(*args)
+        super(ImmutableDotDict, self).__init__(*args, **kwargs)
 
     def __setattr__(self, key, value):
         try:
